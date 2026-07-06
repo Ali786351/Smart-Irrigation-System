@@ -27,3 +27,6 @@ IoT based automatic irrigation system using Arduino. Saves water by monitoring s
 
 ## Documentation
 [📄 Download Full Project Report PDF](Smart_Irrigation_System_Final.pdf)
+
+## Demo Video
+[▶️ Watch Project Demo](WhatsApp%20Video%202026-07-06%20at%202.39.27%20AM.mp4)
