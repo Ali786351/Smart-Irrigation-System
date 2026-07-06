@@ -1,0 +1,112 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <DHT.h>
+#include <NewPing.h>
+
+// --- Pins Definition ---
+#define SOIL_PIN A1
+#define DHTPIN 4
+#define DHTTYPE DHT11
+#define TRIG_PIN 9
+#define ECHO_PIN 10
+#define MAX_DISTANCE 200
+#define RELAY_PIN 7
+#define BUZZER_PIN 8
+#define GREEN_LED 5
+#define RED_LED 6
+#define BUTTON_PIN 12
+
+// --- Objects ---
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Agar LCD on na ho to 0x3F check karein
+DHT dht(DHTPIN, DHTTYPE);
+NewPing sonar(TRIG_PIN, ECHO_PIN, MAX_DISTANCE);
+
+// --- Variables ---
+int soilValue = 0;
+int soilPercent = 0;
+int distance = 0;
+int tankLevel = 0;
+float temp = 0;
+unsigned long lastSend = 0;
+
+void setup() {
+  Serial.begin(9600); // NodeMCU se baat karne ke liye
+  dht.begin();
+  lcd.init();
+  lcd.backlight();
+  
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT);
+
+  digitalWrite(RELAY_PIN, HIGH); // Relay off (Active Low relay ke liye)
+  
+  lcd.setCursor(0, 0);
+  lcd.print("Smart Irrigation");
+  lcd.setCursor(0, 1);
+  lcd.print("System Starting");
+  delay(2000);
+  lcd.clear();
+}
+
+void loop() {
+  // 1. Soil Moisture Read
+  soilValue = analogRead(SOIL_PIN);
+  soilPercent = map(soilValue, 1023, 0, 0, 100); // Calibration
+
+  // 2. Tank Level Read
+  distance = sonar.ping_cm();
+  tankLevel = map(distance, 20, 2, 0, 100); // 20cm empty, 2cm full
+  if(tankLevel < 0) tankLevel = 0;
+  if(tankLevel > 100) tankLevel = 100;
+
+  // 3. Temp & Humidity
+  temp = dht.readTemperature();
+
+  // 4. Logic for Pump
+  if (soilPercent < 30 && tankLevel > 10) {
+    digitalWrite(RELAY_PIN, LOW);  // Pump ON
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+  } 
+  else if (tankLevel <= 10) {
+    digitalWrite(RELAY_PIN, HIGH); // Pump OFF (Low Water)
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH); // Alert
+    delay(100);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+  else {
+    digitalWrite(RELAY_PIN, HIGH); // Pump OFF
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(RED_LED, LOW);
+  }
+
+  // 5. Manual Button Control
+  if (digitalRead(BUTTON_PIN) == HIGH) {
+    digitalWrite(RELAY_PIN, !digitalRead(RELAY_PIN));
+    delay(500);
+  }
+
+  // 6. LCD Display
+  lcd.setCursor(0, 0);
+  lcd.print("Soil:"); lcd.print(soilPercent); lcd.print("%  ");
+  lcd.setCursor(0, 1);
+  lcd.print("Tank:"); lcd.print(tankLevel); lcd.print("% Temp:"); lcd.print((int)temp);
+
+  // 7. Data Send to NodeMCU (Blynk)
+  if (millis() - lastSend > 2000) {
+    // Format: Moisture,Tank,Temp
+    Serial.print(soilPercent);
+    Serial.print(",");
+    Serial.print(tankLevel);
+    Serial.print(",");
+    Serial.println(temp);
+    lastSend = millis();
+  }
+
+  delay(500);
+}
